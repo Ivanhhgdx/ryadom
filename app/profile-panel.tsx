@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
 import { Camera, Check, Loader2, Star, UserRound } from "lucide-react";
+import { Notifications } from "./notifications";
 
 type Profile = { id: string; login: string; fullName: string; bio: string; avatarUrl: string | null; rating: number | null; reviewCount: number; completed: number; createdAt: number; reviews: Array<{ id: string; rating: number; message: string; authorName: string }>; tasks: Array<{ id: string; title: string; price: number }> };
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -55,6 +56,7 @@ export function ProfilePanel({ id, own, onSaved, onTask }: { id: string; own: bo
     <div className="profile-stats"><div><b><Star size={18} fill={profile.rating ? "#ffbd16" : "none"} color={profile.rating ? "#d99e00" : "#9ba3ad"} />{profile.rating ? profile.rating.toFixed(1) : "—"}</b><span>{profile.reviewCount ? `${profile.reviewCount} отзывов` : "Нет оценок"}</span></div><div><b>{profile.completed}</b><span>Завершено задач</span></div><div><b>{new Date(profile.createdAt).getFullYear()}</b><span>На Рядом с</span></div></div>
     {error && <p className="inline-error" role="alert">{error}</p>}{saved && <p className="save-success" role="status"><Check size={16} /> Изменения сохранены</p>}
     {editing ? <form className="modal-form" onSubmit={save}><label>Имя и фамилия<input name="fullName" defaultValue={profile.fullName} minLength={2} maxLength={100} required /></label><label>О себе<textarea name="bio" defaultValue={profile.bio} maxLength={1000} placeholder="Чем занимаетесь и с какими задачами можете помочь" /></label><button className="primary-button" disabled={busy}>Сохранить</button><button className="reset-link" type="button" onClick={() => setEditing(false)}>Отмена</button></form> : <><div className="profile-bio"><h3>О себе</h3><p>{profile.bio || (own ? "Расскажите о своих навыках и опыте." : "Пользователь пока не добавил описание.")}</p></div>{own && <button className="secondary-button" onClick={() => { setEditing(true); setSaved(false); }}>Редактировать профиль</button>}</>}
+    {own && <Notifications userId={id} onTask={onTask} inline />}
     <section className="profile-section"><h3>Отзывы <span>{profile.reviewCount}</span></h3>{profile.reviews.length ? profile.reviews.map((review) => <article className="review-card" key={review.id}><strong>{review.authorName}</strong><div className="rating-stars" aria-label={`${review.rating} из 5`}>{[1,2,3,4,5].map((value) => <Star key={value} size={16} fill={value <= review.rating ? "currentColor" : "none"} />)}</div><p>{review.message}</p><small>По завершённой задаче</small></article>) : <p>Отзывов пока нет. Оценки появляются после завершения совместной задачи.</p>}</section>
     <section className="profile-section"><h3>Объявления</h3>{profile.tasks.length ? profile.tasks.map((task) => <button className="profile-task" key={task.id} onClick={() => onTask(task.id)}><span>{task.title}</span><b>{task.price ? `${task.price.toLocaleString("ru-RU")} ₽` : "Договорная"}</b></button>) : <p>Пока нет объявлений.</p>}</section>
   </div>;

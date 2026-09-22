@@ -29,6 +29,13 @@
       "when": 1790068140157,
       "tag": "0003_quiet_hannibal_king",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790068482819,
+      "tag": "0004_majestic_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

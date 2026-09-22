@@ -25,8 +25,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const taken = await db.prepare("SELECT id FROM applications WHERE task_id = ? AND status IN ('accepted', 'done') LIMIT 1").bind(id).first();
   if (taken) return errorResponse("Исполнитель уже выбран или задача завершена.", 409);
   try {
-    await db.prepare("INSERT INTO applications (id, task_id, applicant_id, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(crypto.randomUUID(), id, user.id, message, "new", Date.now()).run();
+    await db.batch([
+      db.prepare("INSERT INTO applications (id, task_id, applicant_id, message, status, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, user.id, message, "new", Date.now()),
+      db.prepare("INSERT INTO notifications (id, user_id, task_id, message, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), task.ownerId, id, `${user.fullName} откликнулся на вашу задачу`, Date.now()),
+    ]);
     return json({ applied: true }, { status: 201 });
   } catch {
     return errorResponse("Вы уже откликались на это объявление.", 409);
@@ -42,9 +44,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const db = getRawDb();
   const task = await db.prepare("SELECT owner_id AS ownerId FROM tasks WHERE id = ?").bind(id).first<{ ownerId: string }>();
   if (!task || task.ownerId !== user.id) return errorResponse("Только заказчик может управлять задачей.", 403);
+  const application = await db.prepare("SELECT applicant_id AS applicantId FROM applications WHERE id = ? AND task_id = ?").bind(body.applicationId, id).first<{ applicantId: string }>();
+  if (!application) return errorResponse("Отклик не найден.", 404);
   const update = body.status === "accepted"
     ? await db.prepare("UPDATE applications SET status = 'accepted' WHERE id = ? AND task_id = ? AND status = 'new' AND NOT EXISTS (SELECT 1 FROM applications WHERE task_id = ? AND status IN ('accepted', 'done'))").bind(body.applicationId, id, id).run()
     : await db.prepare("UPDATE applications SET status = 'done' WHERE id = ? AND task_id = ? AND status = 'accepted'").bind(body.applicationId, id).run();
   if (!update.meta.changes) return errorResponse("Статус уже изменился. Откройте объявление повторно.", 409);
+  await db.prepare("INSERT INTO notifications (id, user_id, task_id, message, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), application.applicantId, id, body.status === "accepted" ? "Вас выбрали исполнителем" : "Заказчик подтвердил завершение задачи. Оставьте отзыв.", Date.now()).run();
   return json({ ok: true });
 }

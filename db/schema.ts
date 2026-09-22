@@ -77,3 +77,12 @@ export const authLimits = sqliteTable("auth_limits", {
   count: integer("count").notNull(),
   expiresAt: integer("expires_at").notNull(),
 });
+
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  readAt: integer("read_at"),
+  createdAt: integer("created_at").notNull(),
+});
