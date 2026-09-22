@@ -15,6 +15,7 @@ button:disabled { cursor: wait; opacity: .7; }
 .topbar-actions { gap: 20px; color: var(--ink); }
 .icon-button, .login-link { background: transparent; color: inherit; }
 .icon-button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; }
+.active-icon { color: #ef4f58; background: #fff0f1; }
 .icon-button:hover { background: var(--soft); }
 .login-link { font-weight: 700; }
 .login-link:hover { color: var(--blue-dark); }
@@ -54,6 +55,7 @@ h1 { font-size: clamp(36px, 4.2vw, 58px); line-height: .98; letter-spacing: -2.4
 .category:hover { color: var(--ink); background: #e9ebed; }
 .category.active { background: var(--ink); color: #fff; }
 .results-toolbar { display: flex; justify-content: space-between; align-items: center; min-height: 46px; color: #82878d; font-size: 14px; font-weight: 700; }
+.toolbar-note { color: #a0a5aa; font-weight: 600; }
 .filter-button, .near-button { display: inline-flex; align-items: center; gap: 7px; color: #5d6268; background: var(--soft); border-radius: 11px; padding: 11px 14px; font-weight: 700; }
 .filter-button:hover, .near-button:hover { background: #e8eaec; color: var(--ink); }
 .workspace-grid { display: grid; grid-template-columns: minmax(370px, .86fr) minmax(500px, 1.35fr); gap: 24px; margin-top: 16px; }

@@ -7,8 +7,13 @@ export async function GET(request: Request) {
     const category = url.searchParams.get("category");
     const urgent = url.searchParams.get("urgent") === "1";
     const query = url.searchParams.get("query")?.trim();
+    const view = url.searchParams.get("view");
     const clauses = ["1 = 1"];
     const bindings: (string | number)[] = [currentUser?.id ?? ""];
+    if ((view === "mine" || view === "saved") && !currentUser) return errorResponse("Войдите, чтобы открыть этот раздел.", 401);
+    if (view === "mine" && currentUser) clauses.push("t.owner_id = ?");
+    if (view === "mine" && currentUser) bindings.push(currentUser.id);
+    if (view === "saved") clauses.push("f.task_id IS NOT NULL");
     if (category && category !== "all") { clauses.push("t.category = ?"); bindings.push(category); }
     if (urgent) clauses.push("t.urgent = 1");
     if (query) { clauses.push("(lower(t.title) LIKE ? OR lower(t.description) LIKE ? OR lower(t.address) LIKE ?)"); const needle = `%${query.toLowerCase()}%`; bindings.push(needle, needle, needle); }
