@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle, BookOpen, Check, ChevronDown, Grid2X2, Heart, Home, Loader2, LogOut,
   Map as MapIcon, MapPin, Menu, Navigation, Package, Plus, Search, Send,
@@ -17,7 +18,12 @@ type AuthMode = "login" | "register";
 type Modal = "auth" | "create" | "detail" | "apply" | null;
 type ViewMode = "all" | "mine" | "saved";
 
-declare global { interface Window { L?: any } }
+type LeafletMap = { setView: (center: [number, number], zoom: number, options?: { animate?: boolean }) => void; invalidateSize: (options?: { animate?: boolean }) => void; fitBounds: (bounds: LeafletBounds, options?: { animate?: boolean; duration?: number; maxZoom?: number }) => void; locate?: (options: { setView: boolean; maxZoom: number }) => void };
+type LeafletBounds = { pad: (value: number) => LeafletBounds };
+type LeafletLayer = { addTo: (target: LeafletMap | LeafletLayer) => LeafletLayer; clearLayers?: () => void };
+type LeafletMarker = { on: (event: string, callback: () => void) => LeafletMarker; bindTooltip: (content: string, options: { direction: string; offset: [number, number]; opacity: number }) => LeafletMarker; addTo: (target: LeafletMap | LeafletLayer) => LeafletMarker };
+type LeafletApi = { map: (element: HTMLDivElement, options: Record<string, unknown>) => LeafletMap; control: { zoom: (options: { position: string }) => LeafletLayer }; tileLayer: (url: string, options: Record<string, unknown>) => LeafletLayer; layerGroup: () => LeafletLayer; divIcon: (options: Record<string, unknown>) => unknown; marker: (coordinates: [number, number], options: Record<string, unknown>) => LeafletMarker; latLngBounds: (coordinates: [number, number][]) => LeafletBounds };
+declare global { interface Window { L?: LeafletApi } }
 
 const CENTER = [56.0153, 92.8932] as [number, number];
 const categories = [
@@ -46,6 +52,10 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [category, setCategory] = useState("all");
   const [view, setView] = useState<ViewMode>("all");
+  const [minPrice, setMinPrice] = useState<number | "">("");
+  const [maxPrice, setMaxPrice] = useState<number | "">("");
+  const [sort, setSort] = useState("newest");
+  const [showMap, setShowMap] = useState(false);
   const [query, setQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [modal, setModal] = useState<Modal>(null);
@@ -56,8 +66,8 @@ export default function Home() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
   const mapElement = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const markerLayer = useRef<any>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const markerLayer = useRef<LeafletLayer | null>(null);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -82,6 +92,11 @@ export default function Home() {
       loadTasks(),
     ]);
   }, [loadTasks]);
+
+  const filteredTasks = useMemo(() => {
+    const result = tasks.filter((task) => (minPrice === "" || task.price >= minPrice) && (maxPrice === "" || task.price <= maxPrice));
+    return [...result].sort((a, b) => sort === "priceAsc" ? a.price - b.price : sort === "priceDesc" ? b.price - a.price : Number(b.urgent) - Number(a.urgent) || b.createdAt - a.createdAt);
+  }, [tasks, minPrice, maxPrice, sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,20 +132,18 @@ export default function Home() {
     if (!mapReady || !mapRef.current || !markerLayer.current || !window.L) return;
     const L = window.L;
     markerLayer.current.clearLayers();
-    tasks.forEach((task) => {
+    filteredTasks.forEach((task) => {
       const icon = L.divIcon({ className: "task-marker-wrap", html: `<button class="task-marker ${task.urgent ? "is-urgent" : ""}" aria-label="${task.title.replaceAll('"', "&quot;")}"><span>${task.urgent ? "!" : "₽"}</span></button>`, iconSize: [42, 42], iconAnchor: [21, 38] });
       const marker = L.marker([task.lat, task.lng], { icon, riseOnHover: true, keyboard: true });
       marker.on("click", () => { setSelectedTask(task); setModal("detail"); });
       marker.bindTooltip(`<strong>${task.title}</strong><br>${formatPrice(task.price)}`, { direction: "top", offset: [0, -28], opacity: 0.96 });
       marker.addTo(markerLayer.current);
     });
-    if (tasks.length > 0 && tasks.length < 30) {
-      const bounds = L.latLngBounds(tasks.map((task: Task) => [task.lat, task.lng]));
+    if (filteredTasks.length > 0 && filteredTasks.length < 30) {
+      const bounds = L.latLngBounds(filteredTasks.map((task: Task) => [task.lat, task.lng]));
       mapRef.current.fitBounds(bounds.pad(0.16), { animate: true, duration: 0.55, maxZoom: 14 });
     }
-  }, [tasks, mapReady]);
-
-  const filteredTasks = useMemo(() => tasks, [tasks]);
+  }, [filteredTasks, mapReady]);
 
   function openAuth(mode: AuthMode = "login") { setAuthMode(mode); setModal("auth"); }
   function requireAuth(action: () => void) { if (!user) { openAuth(); notify("Сначала войдите или зарегистрируйтесь"); return; } action(); }
@@ -189,6 +202,7 @@ export default function Home() {
   function chooseCategory(id: string) { setCategory(id); setView("all"); void loadTasks(id, query, "all"); }
   function submitSearch(event: FormEvent) { event.preventDefault(); setQuery(searchInput.trim()); void loadTasks(category, searchInput.trim(), view); }
   function chooseView(nextView: ViewMode) { if (!user) { openAuth(); notify("Войдите, чтобы открыть этот раздел"); return; } setView(nextView); void loadTasks(category, query, nextView); }
+  function resetFilters() { setCategory("all"); setMinPrice(""); setMaxPrice(""); setSort("newest"); setView("all"); setQuery(""); setSearchInput(""); void loadTasks("all", "", "all"); }
 
   return (
     <div className="site-shell">
@@ -197,16 +211,18 @@ export default function Home() {
         <div className="topbar-actions"><button className={view === "saved" ? "icon-button active-icon" : "icon-button"} aria-label="Избранное" onClick={() => chooseView("saved")}><Heart size={21} fill={view === "saved" ? "currentColor" : "none"} /></button>{user ? <><button className="profile-chip" onClick={() => notify(`Вы вошли как ${user.fullName}`)}><span className="avatar">{user.fullName.slice(0, 1).toUpperCase()}</span>{user.fullName}</button><button className="icon-button" aria-label="Выйти" onClick={logout}><LogOut size={19} /></button></> : <button className="login-link" onClick={() => openAuth()}>Войти и зарегистрироваться</button>}<button className="post-button" onClick={() => requireAuth(() => setModal("create"))}><Plus size={20} /> Разместить объявление</button></div>
       </header>
 
-      <div className="brand-row"><a className="brand" href="/"><span className="brand-mark"><span /></span><b>рядом</b></a><button className="menu-button" aria-label="Меню"><Menu size={22} /></button><form className="global-search" onSubmit={submitSearch}><Search size={21} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Поиск по объявлениям" /><button type="submit">Найти</button></form><button className="location-label" onClick={() => { mapRef.current?.setView(CENTER, 12, { animate: true }); }}>{"⌖"} Красноярск</button></div>
+      <div className="brand-row"><Link className="brand" href="/"><span className="brand-mark"><span /></span><b>рядом</b></Link><button className="menu-button" aria-label="Меню"><Menu size={22} /></button><form className="global-search" onSubmit={submitSearch}><Search size={21} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Поиск по объявлениям" /><button type="submit">Найти</button></form><button className="location-label" onClick={() => { mapRef.current?.setView(CENTER, 12, { animate: true }); }}>{"⌖"} Красноярск</button></div>
 
       <main className="main-content">
         <div className="breadcrumbs">Главная <span>•</span> Объявления <span>•</span> Красноярск</div>
         <div className="heading-row"><div><h1>Задачи рядом</h1><p>Найди исполнителя или подработку в своём городе.</p></div><div className="view-switch"><button className={view === "all" ? "active" : ""} onClick={() => { setView("all"); void loadTasks(category, query, "all"); }}><ListIcon /> Все объявления</button><button className={view === "mine" ? "active" : ""} onClick={() => chooseView("mine")}>Мои объявления</button></div></div>
+        <div className="map-toggle-row"><button className={showMap ? "map-toggle active" : "map-toggle"} onClick={() => { setShowMap((current) => !current); window.setTimeout(() => mapRef.current?.invalidateSize({ animate: true }), 120); }}><MapIcon size={17} />{showMap ? "Скрыть карту" : "Открыть карту"}</button></div>
         <div className="category-row">{categories.map(({ id, label, icon: Icon }) => <button key={id} className={category === id ? "category active" : "category"} onClick={() => chooseCategory(id)}><Icon size={19} />{label}</button>)}</div>
         <div className="results-toolbar"><span>{filteredTasks.length ? `${filteredTasks.length} ${filteredTasks.length === 1 ? "объявление" : "объявлений"} в Красноярске` : "Пока нет объявлений"}</span><span className="toolbar-note">{view === "mine" ? "Ваши объявления" : view === "saved" ? "Сохранённые объявления" : "По дате публикации"}</span></div>
-        <div className="workspace-grid">
+        <div className={showMap ? "workspace-grid" : "workspace-grid no-map"}>
+          <aside className="filter-sidebar"><div className="filter-head"><h2>Фильтры</h2><button onClick={resetFilters}>Сбросить</button></div><div className="filter-section"><h3>Категория</h3><div className="filter-category-list">{categories.map(({ id, label, icon: Icon }) => <button key={id} className={category === id ? "filter-category active" : "filter-category"} onClick={() => chooseCategory(id)}><Icon size={17} /><span>{label}</span>{category === id ? <Check size={16} /> : null}</button>)}</div></div><div className="filter-section"><h3>Цена, ₽</h3><div className="price-fields"><input type="number" min="0" placeholder="От" value={minPrice} onChange={(event) => setMinPrice(event.target.value ? Number(event.target.value) : "")} /><input type="number" min="0" placeholder="До" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value ? Number(event.target.value) : "")} /></div></div><div className="filter-section"><h3>Сортировка</h3><select className="sort-select" value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Сначала новые</option><option value="priceAsc">Сначала дешевле</option><option value="priceDesc">Сначала дороже</option></select></div></aside>
           <section className="task-panel"><div className="panel-head"><div><h2>Объявления в Красноярске</h2><span>{filteredTasks.length ? "Обновляются сразу после публикации" : "Разместите первое поручение"}</span></div><button className="near-button" onClick={() => { mapRef.current?.locate?.({ setView: true, maxZoom: 15 }); notify("Определяем ваше местоположение"); }}><Navigation size={16} /> Моё местоположение</button></div><div className="task-list">{filteredTasks.length ? filteredTasks.map((task) => <article className={task.urgent ? "task-card urgent" : "task-card"} key={task.id} onClick={() => { setSelectedTask(task); setModal("detail"); }}><div className="task-symbol"><span>{task.urgent ? "!" : categoryName(task.category).slice(0, 1)}</span></div><div className="task-card-body"><div className="task-card-top"><div><div className="task-kicker">{categoryName(task.category)} {task.urgent ? <b className="urgent-badge">Срочно</b> : null}</div><h3>{task.title}</h3></div><button className={task.isFavorite ? "heart-button saved" : "heart-button"} onClick={(event) => { event.stopPropagation(); void toggleFavorite(task); }} aria-label="Сохранить"><Heart size={21} fill={task.isFavorite ? "currentColor" : "none"} /></button></div><p>{task.description}</p><div className="task-meta"><span><MapPin size={15} />{task.address}</span><span>{formatDate(task.createdAt)}</span></div><div className="task-footer"><b>{formatPrice(task.price)}</b><span>{task.ownerName}</span></div></div></article>) : <div className="empty-state"><div className="empty-icon"><MapIcon size={27} /></div><h3>Здесь пока тихо</h3><p>Создайте объявление — оно появится здесь и на карте у всех пользователей.</p><button className="primary-button" onClick={() => requireAuth(() => setModal("create"))}><Plus size={18} /> Разместить объявление</button></div>}</div></section>
-          <section className="map-panel"><div ref={mapElement} className="map-container" aria-label="Карта объявлений Красноярска" />{!mapReady && !mapError ? <div className="map-loading"><Loader2 className="spin" size={21} /> Загружаем карту Красноярска</div> : null}{mapError ? <div className="map-loading"><AlertCircle size={20} /> Не удалось загрузить карту</div> : null}<div className="map-title"><MapIcon size={17} /> Карта Красноярска</div><button className="map-locate" aria-label="Центрировать карту" onClick={() => mapRef.current?.setView(CENTER, 12, { animate: true })}><Navigation size={17} /></button><div className="map-caption">{tasks.length ? `${tasks.length} ${tasks.length === 1 ? "точка" : "точек"} на карте` : "Новые объявления появятся здесь"}</div></section>
+          <section className={showMap ? "map-panel" : "map-panel map-panel-hidden"}><div ref={mapElement} className="map-container" aria-label="Карта объявлений Красноярска" />{!mapReady && !mapError ? <div className="map-loading"><Loader2 className="spin" size={21} /> Загружаем карту Красноярска</div> : null}{mapError ? <div className="map-loading"><AlertCircle size={20} /> Не удалось загрузить карту</div> : null}<div className="map-title"><MapIcon size={17} /> Карта Красноярска</div><button className="map-locate" aria-label="Центрировать карту" onClick={() => mapRef.current?.setView(CENTER, 12, { animate: true })}><Navigation size={17} /></button><div className="map-caption">{filteredTasks.length ? `${filteredTasks.length} ${filteredTasks.length === 1 ? "точка" : "точек"} на карте` : "Новые объявления появятся здесь"}</div></section>
         </div>
       </main>
 
