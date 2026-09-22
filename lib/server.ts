@@ -26,6 +26,20 @@ export async function digestHex(value: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
+export async function allowAuthAttempt(request: Request, login: string, mode: "login" | "register") {
+  const db = getRawDb();
+  const now = Date.now();
+  const ip = request.headers.get("cf-connecting-ip") || "local";
+  const limit = mode === "register" ? 20 : 60;
+  const keys = [{ key: `${mode}:ip:${await digestHex(ip)}`, limit }, ...(mode === "login" ? [{ key: `login:user:${await digestHex(login)}`, limit: 10 }] : [])];
+  for (const item of keys) {
+    const row = await db.prepare("INSERT INTO auth_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = CASE WHEN expires_at < ? THEN 1 ELSE count + 1 END, expires_at = CASE WHEN expires_at < ? THEN excluded.expires_at ELSE expires_at END RETURNING count").bind(item.key, now + 600000, now, now).first<{ count: number }>();
+    if (!row || row.count > item.limit) return false;
+  }
+  await db.prepare("DELETE FROM auth_limits WHERE expires_at < ?").bind(now - 86400000).run();
+  return true;
+}
+
 export async function hashPassword(password: string, saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16)))) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
@@ -65,12 +79,19 @@ export async function createSession(userId: string) {
   return token;
 }
 
-export function sessionCookie(token: string) {
-  return `ryadom_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`;
+export function sessionCookie(token: string, request: Request) {
+  const url = new URL(request.url);
+  const secure = url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname) ? "" : " Secure;";
+  return `ryadom_session=${encodeURIComponent(token)}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=2592000`;
 }
 
 export function clearSessionCookie() {
-  return "ryadom_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+  return "ryadom_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+}
+
+export async function revokeSession(request: Request) {
+  const token = parseCookies(request).ryadom_session;
+  if (token) await getRawDb().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await digestHex(token)).run();
 }
 
 export function json(data: unknown, init: ResponseInit = {}) {

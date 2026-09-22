@@ -6,6 +6,8 @@ export const users = sqliteTable(
     id: text("id").primaryKey(),
     login: text("login").notNull(),
     fullName: text("full_name").notNull(),
+    bio: text("bio").notNull().default(""),
+    avatarKey: text("avatar_key"),
     passwordHash: text("password_hash").notNull(),
     salt: text("salt").notNull(),
     createdAt: integer("created_at").notNull(),
@@ -29,6 +31,7 @@ export const tasks = sqliteTable("tasks", {
   category: text("category").notNull(),
   price: integer("price").notNull(),
   address: text("address").notNull(),
+  district: text("district"),
   lat: real("lat").notNull(),
   lng: real("lng").notNull(),
   urgent: integer("urgent", { mode: "boolean" }).notNull().default(false),
@@ -58,3 +61,19 @@ export const applications = sqliteTable(
   },
   (table) => ({ applicantTaskUnique: uniqueIndex("applications_task_applicant_unique").on(table.taskId, table.applicantId) }),
 );
+
+export const reviews = sqliteTable("reviews", {
+  id: text("id").primaryKey(),
+  taskId: text("task_id").notNull().references(() => tasks.id),
+  reviewerId: text("reviewer_id").notNull().references(() => users.id),
+  revieweeId: text("reviewee_id").notNull().references(() => users.id),
+  rating: integer("rating").notNull(),
+  message: text("message").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => ({ uniqueReview: uniqueIndex("reviews_task_reviewer_unique").on(table.taskId, table.reviewerId) }));
+
+export const authLimits = sqliteTable("auth_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});
