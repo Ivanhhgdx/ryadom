@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text, primaryKey, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable(
   "users",
@@ -32,6 +32,7 @@ export const tasks = sqliteTable("tasks", {
   price: integer("price").notNull(),
   address: text("address").notNull(),
   district: text("district"),
+  workMode: text("work_mode").notNull().default("onsite"),
   lat: real("lat").notNull(),
   lng: real("lng").notNull(),
   urgent: integer("urgent", { mode: "boolean" }).notNull().default(false),
@@ -84,5 +85,37 @@ export const notifications = sqliteTable("notifications", {
   taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   message: text("message").notNull(),
   readAt: integer("read_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const media = sqliteTable("media", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  purpose: text("purpose").notNull(),
+  taskId: text("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+  applicationId: text("application_id").references(() => applications.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => ({ taskIndex: index("media_task_idx").on(t.taskId), ownerIndex: index("media_owner_created_idx").on(t.ownerId, t.createdAt) }));
+
+export const messages = sqliteTable("messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  applicationId: text("application_id").notNull().references(() => applications.id, { onDelete: "cascade" }),
+  senderId: text("sender_id").notNull().references(() => users.id),
+  clientId: text("client_id").notNull(),
+  body: text("body").notNull(),
+  mediaId: text("media_id").references(() => media.id),
+  createdAt: integer("created_at").notNull(),
+}, (t) => ({ chatIndex: index("messages_chat_id_idx").on(t.applicationId, t.id), dedup: uniqueIndex("messages_sender_client_idx").on(t.senderId, t.clientId), mediaUnique: uniqueIndex("messages_media_idx").on(t.mediaId) }));
+
+export const chatReads = sqliteTable("chat_reads", {
+  applicationId: text("application_id").notNull().references(() => applications.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lastReadId: integer("last_read_id").notNull().default(0),
+}, (t) => ({ pk: primaryKey({ columns: [t.applicationId, t.userId] }) }));
+
+export const geocodeCache = sqliteTable("geocode_cache", {
+  query: text("query").primaryKey(),
+  result: text("result").notNull(),
   createdAt: integer("created_at").notNull(),
 });
