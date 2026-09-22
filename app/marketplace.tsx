@@ -2,13 +2,14 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { YandexMap } from "./yandex-map";
 import { Notifications } from "./notifications";
 import { ProfilePanel, ReviewForm } from "./profile-panel";
 import { districts } from "@/lib/districts";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertCircle, BookOpen, Check, Grid2X2, Heart, Home as HomeIcon, Loader2, LogOut,
-  Map as MapIcon, MapPin, Navigation, Package, Plus, Search, Send,
+  Map as MapIcon, MapPin, Package, Plus, Search, Send,
   UserRound, Video, Wrench, X, Zap,
 } from "lucide-react";
 
@@ -22,14 +23,6 @@ type AuthMode = "login" | "register";
 type Modal = "auth" | "create" | "detail" | "apply" | "profile" | null;
 type ViewMode = "all" | "mine" | "saved";
 
-type LeafletMap = { setView: (center: [number, number], zoom: number, options?: { animate?: boolean }) => void; invalidateSize: (options?: { animate?: boolean }) => void; fitBounds: (bounds: LeafletBounds, options?: { animate?: boolean; duration?: number; maxZoom?: number }) => void; locate?: (options: { setView: boolean; maxZoom: number }) => void };
-type LeafletBounds = { pad: (value: number) => LeafletBounds };
-type LeafletLayer = { addTo: (target: LeafletMap | LeafletLayer) => LeafletLayer; clearLayers?: () => void };
-type LeafletMarker = { on: (event: string, callback: () => void) => LeafletMarker; bindTooltip: (content: string, options: { direction: string; offset: [number, number]; opacity: number }) => LeafletMarker; addTo: (target: LeafletMap | LeafletLayer) => LeafletMarker };
-type LeafletApi = { map: (element: HTMLDivElement, options: Record<string, unknown>) => LeafletMap; control: { zoom: (options: { position: string }) => LeafletLayer }; tileLayer: (url: string, options: Record<string, unknown>) => LeafletLayer; layerGroup: () => LeafletLayer; divIcon: (options: Record<string, unknown>) => unknown; marker: (coordinates: [number, number], options: Record<string, unknown>) => LeafletMarker; latLngBounds: (coordinates: [number, number][]) => LeafletBounds };
-declare global { interface Window { L?: LeafletApi } }
-
-const CENTER = [56.0153, 92.8932] as [number, number];
 const categories = [
   { id: "all", label: "Все категории", icon: Grid2X2 },
   { id: "delivery", label: "Доставка", icon: Package },
@@ -77,11 +70,6 @@ export default function Marketplace() {
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
-  const [mapError, setMapError] = useState(false);
-  const mapElement = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<LeafletMap | null>(null);
-  const markerLayer = useRef<LeafletLayer | null>(null);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -116,54 +104,6 @@ export default function Marketplace() {
     const result = tasks.filter((task) => (minPrice === "" || task.price >= minPrice) && (maxPrice === "" || task.price <= maxPrice));
     return [...result].sort((a, b) => sort === "priceAsc" ? a.price - b.price : sort === "priceDesc" ? b.price - a.price : sort === "newest" ? b.createdAt - a.createdAt : Number(b.urgent) - Number(a.urgent) || b.createdAt - a.createdAt);
   }, [tasks, minPrice, maxPrice, sort]);
-
-  useEffect(() => {
-    if (!showMap) return;
-    let cancelled = false;
-    const mount = () => {
-      if (cancelled || !mapElement.current || !window.L || mapRef.current) return;
-      const L = window.L;
-      const map = L.map(mapElement.current, {
-        center: CENTER, zoom: 12, minZoom: 3, maxZoom: 19,
-        zoomControl: false, scrollWheelZoom: true, inertia: true, inertiaDeceleration: 2200, zoomAnimation: true, fadeAnimation: true,
-        markerZoomAnimation: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelDebounceTime: 16,
-        wheelPxPerZoomLevel: 160, preferCanvas: true,
-      });
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        updateWhenZooming: false, keepBuffer: 4,
-      }).addTo(map);
-      markerLayer.current = L.layerGroup().addTo(map);
-      mapRef.current = map;
-      const observer = new ResizeObserver(() => map.invalidateSize({ animate: false }));
-      observer.observe(mapElement.current);
-      setMapReady(true);
-      window.setTimeout(() => map.invalidateSize(), 80);
-    };
-    if (window.L) mount();
-    else {
-      const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
-      const script = document.createElement("script"); script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; script.async = true;
-      script.onload = mount; script.onerror = () => setMapError(true); document.head.appendChild(script);
-    }
-    return () => { cancelled = true; };
-  }, [showMap]);
-
-  useEffect(() => {
-    if (!mapReady || !mapRef.current || !markerLayer.current || !window.L) return;
-    const L = window.L;
-    const layer = markerLayer.current;
-    layer.clearLayers?.();
-    filteredTasks.forEach((task) => {
-      const icon = L.divIcon({ className: "task-marker-wrap", html: `<div class="task-marker ${task.urgent ? "is-urgent" : ""}" aria-label="Открыть объявление"><span>${task.urgent ? "ϟ " : ""}${task.price ? new Intl.NumberFormat("ru-RU").format(task.price) + " ₽" : "Договорная"}</span></div>`, iconSize: [110, 38], iconAnchor: [55, 42] });
-      const marker = L.marker([task.lat, task.lng], { icon, riseOnHover: true, keyboard: true });
-      marker.on("click", () => { setSelectedTask(task); setModal("detail"); });
-      const safeTitle = task.title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));
-      marker.bindTooltip(`<strong>${safeTitle}</strong><br>${formatPrice(task.price)}`, { direction: "top", offset: [0, -28], opacity: 0.96 });
-      marker.addTo(layer);
-    });
-  }, [filteredTasks, mapReady]);
 
   useEffect(() => {
     if (modal !== "detail" || !selectedTask || !user) return;
@@ -255,18 +195,18 @@ export default function Marketplace() {
         <div className="topbar-actions"><button className={view === "saved" ? "icon-button active-icon" : "icon-button"} aria-label="Избранное" onClick={() => chooseView("saved")}><Heart size={21} fill={view === "saved" ? "currentColor" : "none"} /></button>{user ? <><Notifications userId={user.id} onTask={(id) => void openTask(id)} /><button className="profile-chip" onClick={() => { setProfileId(user.id); setModal("profile"); }}><span className="avatar">{user.fullName.slice(0, 1).toUpperCase()}</span>{user.fullName}</button><button className="icon-button" aria-label="Выйти" onClick={logout}><LogOut size={19} /></button></> : <button className="login-link" onClick={() => openAuth()}>Войти и зарегистрироваться</button>}<button className="post-button" onClick={() => requireAuth(() => setModal("create"))}><Plus size={20} /> Разместить объявление</button></div>
       </header>
 
-      <div className="brand-row"><Link className="brand" href="/"><img className="brand-logo" src="/ryadom-logo.png" alt="" width="52" height="52" /><b>рядом</b></Link><form className="global-search" onSubmit={submitSearch}><Search size={21} /><input aria-label="Поиск по объявлениям" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Поиск по объявлениям" /><button type="submit">Найти</button></form><button className="location-label" onClick={() => { mapRef.current?.setView(CENTER, 12, { animate: true }); }}>{"⌖"} Красноярск</button></div>
+      <div className="brand-row"><Link className="brand" href="/"><img className="brand-logo" src="/ryadom-logo.png" alt="" width="52" height="52" /><b>рядом</b></Link><form className="global-search" onSubmit={submitSearch}><Search size={21} /><input aria-label="Поиск по объявлениям" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Поиск по объявлениям" /><button type="submit">Найти</button></form><button className="location-label" onClick={() => setShowMap(true)}>{"⌖"} Красноярск</button></div>
 
       <main className="main-content">
         <div className="breadcrumbs">Главная <span>•</span> Объявления <span>•</span> Красноярск</div>
         <div className="heading-row"><div><h1>Задачи рядом</h1><p>Найди исполнителя или подработку в своём городе.</p></div><div className="view-switch"><button className={view === "all" ? "active" : ""} onClick={() => { setView("all"); void loadTasks(category, query, "all"); }}><ListIcon /> Все объявления</button><button className={view === "mine" ? "active" : ""} onClick={() => chooseView("mine")}>Мои объявления</button></div></div>
-        <div className="map-toggle-row"><button className={showMap ? "map-toggle active" : "map-toggle"} onClick={() => { setShowMap((current) => !current); window.setTimeout(() => mapRef.current?.invalidateSize({ animate: true }), 120); }}><MapIcon size={17} />{showMap ? "Скрыть карту" : "Открыть карту"}</button></div>
+        <div className="map-toggle-row"><button className={showMap ? "map-toggle active" : "map-toggle"} onClick={() => { setShowMap((current) => !current);  }}><MapIcon size={17} />{showMap ? "Скрыть карту" : "Открыть карту"}</button></div>
         <div className="category-row">{categories.map(({ id, label, icon: Icon }) => <button key={id} className={category === id ? "category active" : "category"} onClick={() => chooseCategory(id)}><Icon size={19} />{label}</button>)}</div>
         <div className="results-toolbar"><span>{filteredTasks.length ? `${filteredTasks.length} ${plural(filteredTasks.length)} в Красноярске` : "Пока нет объявлений"}</span><span className="toolbar-note">{view === "mine" ? "Ваши объявления" : view === "saved" ? "Сохранённые объявления" : "По дате публикации"}</span></div>
         <div className={showMap ? "workspace-grid" : "workspace-grid no-map"}>
           <aside className={filtersOpen ? "filter-sidebar expanded" : "filter-sidebar"}><div className="filter-head"><h2>Фильтры</h2><button className="mobile-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>{filtersOpen ? "Свернуть" : "Настроить"}</button><button onClick={resetFilters}>Сбросить</button></div><div className="filter-section"><h3>Категория</h3><div className="filter-category-list">{categories.filter((item) => item.id !== "urgent").map(({ id, label, icon: Icon }) => <button key={id} className={category === id ? "filter-category active" : "filter-category"} onClick={() => chooseCategory(id)}><Icon size={17} /><span>{label}</span>{category === id ? <Check size={16} /> : null}</button>)}</div></div><div className="filter-section"><h3>Район Красноярска</h3><div className="district-list">{districts.map((district) => <label key={district}><input type="checkbox" checked={selectedDistricts.includes(district)} onChange={(event) => setSelectedDistricts((current) => event.target.checked ? [...current, district] : current.filter((item) => item !== district))} /><span>{district}</span></label>)}</div><label className="urgency-filter"><input type="checkbox" checked={onlyUrgent} onChange={(event) => setOnlyUrgent(event.target.checked)} /><Zap size={16} /> Только срочные</label></div><div className="filter-section"><h3>Цена, ₽</h3><div className="price-fields"><input aria-label="Минимальная цена" type="number" min="0" placeholder="От" value={minPrice} onChange={(event) => setMinPrice(event.target.value ? Number(event.target.value) : "")} /><input aria-label="Максимальная цена" type="number" min="0" placeholder="До" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value ? Number(event.target.value) : "")} /></div></div><div className="filter-section"><h3>Сортировка</h3><select className="sort-select" value={sort} onChange={(event) => setSort(event.target.value)}><option value="recommended">Рекомендуемые</option><option value="newest">Сначала новые</option><option value="priceAsc">Сначала дешевле</option><option value="priceDesc">Сначала дороже</option></select></div></aside>
-          <section className="task-panel"><div className="panel-head"><div><h2>Объявления в Красноярске</h2><span>{filteredTasks.length ? "Обновляются сразу после публикации" : "Разместите первое поручение"}</span></div><button className="near-button" onClick={() => { mapRef.current?.locate?.({ setView: true, maxZoom: 15 }); notify("Определяем ваше местоположение"); }}><Navigation size={16} /> Моё местоположение</button></div><div className="task-list" aria-busy={loading}>{loading ? <div className="empty-state"><Loader2 className="spin" /><p>Загружаем объявления…</p></div> : loadError ? <div className="empty-state"><AlertCircle /><h3>Не удалось загрузить объявления</h3><p>{loadError}</p><button className="primary-button" onClick={() => void loadTasks()}>Попробовать снова</button></div> : filteredTasks.length ? filteredTasks.map((task) => <article tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelectedTask(task); setModal("detail"); } }} className={task.urgent ? "task-card urgent" : "task-card"} key={task.id} onClick={() => { setSelectedTask(task); setModal("detail"); }}><div className="task-symbol"><TaskIcon category={task.category} /></div><div className="task-card-body"><div className="task-card-top"><div><div className="task-kicker">{categoryName(task.category)} {task.workStatus ? <b className="category-pill">{task.workStatus === "done" ? "Завершено" : "В работе"}</b> : null} {task.urgent ? <b className="urgent-badge">Срочно</b> : null}</div><h3>{task.title}</h3></div><button className={task.isFavorite ? "heart-button saved" : "heart-button"} onClick={(event) => { event.stopPropagation(); void toggleFavorite(task); }} aria-label="Сохранить"><Heart size={21} fill={task.isFavorite ? "currentColor" : "none"} /></button></div><p>{task.description}</p><div className="task-meta"><span><MapPin size={15} />{task.district ? `${task.district} · ` : ""}{task.address}</span><span>{formatDate(task.createdAt)}</span></div><div className="task-footer"><b>{formatPrice(task.price)}</b><button className="card-author" onClick={(event) => { event.stopPropagation(); setProfileId(task.ownerId); setModal("profile"); }}>{task.ownerName}</button></div></div></article>) : <div className="empty-state"><div className="empty-icon"><MapIcon size={27} /></div><h3>{view === "saved" ? "Избранное пока пусто" : query || category !== "all" || minPrice !== "" || maxPrice !== "" ? "Ничего не найдено" : "Пока нет объявлений"}</h3><p>{view === "saved" ? "Нажмите на сердечко у объявления, чтобы сохранить его здесь." : "Попробуйте изменить фильтры или разместите своё поручение."}</p><button className="reset-link" onClick={resetFilters}>Сбросить фильтры</button><button className="primary-button" onClick={() => requireAuth(() => setModal("create"))}><Plus size={18} /> Разместить объявление</button></div>}</div></section>
-          <section className={showMap ? "map-panel" : "map-panel map-panel-hidden"}><div ref={mapElement} className="map-container" aria-label="Карта объявлений Красноярска" />{!mapReady && !mapError ? <div className="map-loading"><Loader2 className="spin" size={21} /> Загружаем карту Красноярска</div> : null}{mapError ? <div className="map-loading"><AlertCircle size={20} /> Не удалось загрузить карту</div> : null}<div className="map-title"><MapIcon size={17} /> Карта Красноярска</div><button className="map-locate" aria-label="Центрировать карту" onClick={() => mapRef.current?.setView(CENTER, 12, { animate: true })}><Navigation size={17} /></button><div className="map-caption">{filteredTasks.length ? `${filteredTasks.length} ${filteredTasks.length === 1 ? "точка" : "точек"} на карте` : "Новые объявления появятся здесь"}</div></section>
+          <section className="task-panel"><div className="panel-head"><div><h2>Объявления в Красноярске</h2><span>{filteredTasks.length ? "Обновляются сразу после публикации" : "Разместите первое поручение"}</span></div></div><div className="task-list" aria-busy={loading}>{loading ? <div className="empty-state"><Loader2 className="spin" /><p>Загружаем объявления…</p></div> : loadError ? <div className="empty-state"><AlertCircle /><h3>Не удалось загрузить объявления</h3><p>{loadError}</p><button className="primary-button" onClick={() => void loadTasks()}>Попробовать снова</button></div> : filteredTasks.length ? filteredTasks.map((task) => <article tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelectedTask(task); setModal("detail"); } }} className={task.urgent ? "task-card urgent" : "task-card"} key={task.id} onClick={() => { setSelectedTask(task); setModal("detail"); }}><div className="task-symbol"><TaskIcon category={task.category} /></div><div className="task-card-body"><div className="task-card-top"><div><div className="task-kicker">{categoryName(task.category)} {task.workStatus ? <b className="category-pill">{task.workStatus === "done" ? "Завершено" : "В работе"}</b> : null} {task.urgent ? <b className="urgent-badge">Срочно</b> : null}</div><h3>{task.title}</h3></div><button className={task.isFavorite ? "heart-button saved" : "heart-button"} onClick={(event) => { event.stopPropagation(); void toggleFavorite(task); }} aria-label="Сохранить"><Heart size={21} fill={task.isFavorite ? "currentColor" : "none"} /></button></div><p>{task.description}</p><div className="task-meta"><span><MapPin size={15} />{task.district ? `${task.district} · ` : ""}{task.address}</span><span>{formatDate(task.createdAt)}</span></div><div className="task-footer"><b>{formatPrice(task.price)}</b><button className="card-author" onClick={(event) => { event.stopPropagation(); setProfileId(task.ownerId); setModal("profile"); }}>{task.ownerName}</button></div></div></article>) : <div className="empty-state"><div className="empty-icon"><MapIcon size={27} /></div><h3>{view === "saved" ? "Избранное пока пусто" : query || category !== "all" || minPrice !== "" || maxPrice !== "" ? "Ничего не найдено" : "Пока нет объявлений"}</h3><p>{view === "saved" ? "Нажмите на сердечко у объявления, чтобы сохранить его здесь." : "Попробуйте изменить фильтры или разместите своё поручение."}</p><button className="reset-link" onClick={resetFilters}>Сбросить фильтры</button><button className="primary-button" onClick={() => requireAuth(() => setModal("create"))}><Plus size={18} /> Разместить объявление</button></div>}</div></section>
+          {showMap ? <div className="map-panel yandex-panel"><YandexMap tasks={filteredTasks} onTask={(id) => void openTask(id)} /></div> : null}
         </div>
       </main>
 
