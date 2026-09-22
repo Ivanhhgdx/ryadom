@@ -34,7 +34,7 @@
     .leaflet-container{background:#e9edf0;cursor:grab}.leaflet-container:active{cursor:grabbing}.leaflet-zoom-animated{transition:transform .34s cubic-bezier(.2,.8,.2,1)!important}.leaflet-fade-animated{transition:opacity .25s ease!important}.leaflet-marker-icon{transition:transform .25s cubic-bezier(.2,.8,.2,1)}
     @media(max-width:900px){.top{height:76px}.top-utility{display:none}.top-main{height:76px}.surface{grid-template-columns:1fr}.map-wrap{min-height:440px;border-radius:20px}.list{min-height:500px}.bottom{grid-template-columns:1fr}}
     @media(max-width:600px){.top{height:60px;padding:0 12px}.top-main{height:60px;gap:7px}.brand{font-size:18px}.category-menu{width:38px;height:38px;border-radius:10px;font-size:20px}.top-search{height:40px;padding-left:9px}.top-search input{font-size:12px}.search-submit{display:none}.city,.top-actions{display:none}.wrap{padding:22px 12px 45px}.heading h1{font-size:31px}.heading p{font-size:13px}.surface{display:flex}.map-wrap{height:420px;min-height:420px;border-radius:20px}.list{min-height:430px;border-radius:20px}.task{grid-template-columns:46px minmax(0,1fr);padding:16px}.task-icon{width:46px;height:46px}.task-price{grid-column:2;text-align:left}.top-utility{display:none}}
-    .urgent-field{padding:14px 15px;border-radius:14px;background:#fff7f2}.urgent-field select{background:#fff7f2;border-color:#ffd9c8}.fee-preview{margin-top:7px;color:#a65b36;font-size:11px;line-height:1.4}.urgent-card{background:#fffaf7!important}.urgent-card .task-price:after{content:'СРОЧНО';display:block;color:#e8663b;font-size:9px;letter-spacing:.08em;margin-top:5px}
+    .urgent-field{padding:14px 15px;border-radius:14px;background:#fff7f2}.urgent-field select{background:#fff7f2;border-color:#ffd9c8}.fee-preview{margin-top:7px;color:#a65b36;font-size:11px;line-height:1.4}.urgent-card{background:#fffaf7!important}.urgent-card .task-price:after{content:'СРОЧНО';display:block;color:#e8663b;font-size:9px;letter-spacing:.08em;margin-top:5px}.icon-filter{display:inline-flex;align-items:center;gap:8px}.icon-filter svg{width:16px;height:16px;stroke-width:2.1}.task-icon svg{width:24px;height:24px;stroke-width:2.1}.category-menu svg{width:20px;height:20px}
   </style>
 </head>
 <body>
@@ -95,6 +95,25 @@
     const oldAddMarker = addMarker;
     addMarker = function(task) { oldAddMarker(task); if (task.urgent) { const last = markers[markers.length - 1]; last.setZIndexOffset(1000); } };
     if (map) { map.options.zoomAnimation = true; map.options.fadeAnimation = true; map.options.markerZoomAnimation = true; map.options.wheelDebounceTime = 25; map.options.wheelPxPerZoomLevel = 90; map.eachLayer(layer => { if (layer instanceof L.TileLayer) map.removeLayer(layer); }); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, attribution: '© OpenStreetMap contributors © CARTO' }).addTo(map); map.invalidateSize({ animate: true }); }
+  </script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
+  <script>
+    const categoryIcons = { all:'layout-grid', delivery:'package', digital:'video', repair:'wrench', home:'home', study:'book-open', urgent:'zap' };
+    function mountProfessionalIcons() {
+      document.querySelectorAll('[data-category]').forEach(button => {
+        if (!button.querySelector('svg')) {
+          const icon = document.createElement('i'); icon.dataset.lucide = categoryIcons[button.dataset.category] || 'circle'; button.prepend(icon); button.classList.add('icon-filter');
+        }
+      });
+      document.querySelectorAll('.task').forEach(card => {
+        const task = tasks().find(item => item.id === card.dataset.id); const icon = card.querySelector('.task-icon');
+        if (task && icon && !icon.querySelector('svg')) icon.innerHTML = `<i data-lucide="${categoryIcons[task.category] || 'circle'}"></i>`;
+      });
+      if (window.lucide) lucide.createIcons({ attrs:{'aria-hidden':'true'} });
+    }
+    const iconRender = render;
+    render = function() { iconRender(); mountProfessionalIcons(); };
+    mountProfessionalIcons();
   </script>
 </body>
 </html>
