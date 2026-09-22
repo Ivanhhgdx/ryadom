@@ -1,4 +1,6 @@
-import Marketplace from "./marketplace";
+import dynamic from "next/dynamic";
+
+const Marketplace = dynamic(() => import("./marketplace"), { ssr: false });
 
 export const dynamic = "force-static";
 
