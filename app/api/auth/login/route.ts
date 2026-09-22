@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const user = await db.prepare("SELECT id, login, full_name as fullName, password_hash as passwordHash, salt FROM users WHERE login = ? LIMIT 1")
       .bind(login).first<{ id: string; login: string; fullName: string; passwordHash: string; salt: string }>();
     if (!user) return errorResponse("Неверный логин или пароль.", 401);
-    const candidate = await hashPassword(password, user.salt);
+    const candidate = await hashPassword(password, user.salt, user.passwordHash.startsWith("v2:") ? 100000 : 120000);
     if (candidate.hash !== user.passwordHash) return errorResponse("Неверный логин или пароль.", 401);
     const token = await createSession(user.id);
     return json({ user: { id: user.id, login: user.login, fullName: user.fullName } }, { headers: { "set-cookie": sessionCookie(token, request) } });

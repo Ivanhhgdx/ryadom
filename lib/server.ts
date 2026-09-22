@@ -40,14 +40,14 @@ export async function allowAuthAttempt(request: Request, login: string, mode: "l
   return true;
 }
 
-export async function hashPassword(password: string, saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16)))) {
+export async function hashPassword(password: string, saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16))), iterations = 100000) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: hexToBytes(saltHex), iterations: 120000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: hexToBytes(saltHex), iterations, hash: "SHA-256" },
     key,
     256,
   );
-  return { hash: bytesToHex(new Uint8Array(bits)), salt: saltHex };
+  return { hash: `${iterations === 100000 ? "v2:" : ""}${bytesToHex(new Uint8Array(bits))}`, salt: saltHex };
 }
 
 function parseCookies(request: Request) {
