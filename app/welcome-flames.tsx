@@ -24,7 +24,7 @@ export function WelcomeAndFlames({ userId }: { userId?: string }) {
       const key = `ryadom:flame-seen:${userId}`;
       try {
         const seen = localStorage.getItem(key);
-        if (newest && seen && seen !== newest) setCelebrate(true);
+        if (newest && seen !== newest) setCelebrate(true);
         localStorage.setItem(key, newest || "none");
       } catch { /* Celebration is optional if storage is disabled. */ }
     }).catch(() => undefined); };
@@ -66,7 +66,7 @@ export function WelcomeAndFlames({ userId }: { userId?: string }) {
       <h2 id="flame-title">Ваш огонёк зажёгся!</h2>
       <p>Сегодня вы помогли человеку рядом. {data?.streak ?? 1} дней подряд — отличный ритм. Возвращайтесь завтра за следующим огоньком.</p>
       <div className="flame-celebration-count"><Check size={20} /> {data?.streak ?? 1} из {data?.nextMilestone ?? 5} дней</div>
-      {data?.rewards.some((reward) => reward.milestone === data.streak && reward.status === "pending_review") ? <p className="flame-reward-note">Награда за эту отметку записана и ожидает проверки. Выплаты будут доступны после подключения платёжного сервиса.</p> : null}
+      {data?.rewards.some((reward) => reward.milestone === data.streak && reward.status === "pending_review") ? <p className="flame-reward-note">Награда {data.rewards.find((reward) => reward.milestone === data.streak)?.amount} ₽ за эту отметку записана и ожидает проверки. Выплаты будут доступны после подключения платёжного сервиса.</p> : null}
       <button className="experience-primary" onClick={() => setCelebrate(false)}>Продолжить</button>
     </div></div> : null}
   </>;
