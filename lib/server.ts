@@ -9,7 +9,7 @@ export function getRawDb(): Db {
   return env.DB;
 }
 
-export type PublicUser = { id: string; login: string; fullName: string };
+export type PublicUser = { id: string; login: string; fullName: string; avatarUrl: string | null };
 
 function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -64,10 +64,10 @@ export async function getCurrentUser(request: Request): Promise<PublicUser | nul
   if (!token) return null;
   const db = getRawDb();
   const row = await db
-    .prepare(`SELECT u.id, u.login, u.full_name as fullName FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? LIMIT 1`)
+    .prepare(`SELECT u.id, u.login, u.full_name as fullName, u.avatar_key as avatarKey FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? LIMIT 1`)
     .bind(await digestHex(token), Date.now())
-    .first<PublicUser>();
-  return row ?? null;
+    .first<Omit<PublicUser, "avatarUrl"> & { avatarKey: string | null }>();
+  return row ? { id: row.id, login: row.login, fullName: row.fullName, avatarUrl: row.avatarKey ? `/api/avatars/${row.avatarKey}` : null } : null;
 }
 
 export async function createSession(userId: string) {

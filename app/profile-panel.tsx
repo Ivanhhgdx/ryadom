@@ -13,7 +13,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
-export function ProfilePanel({ id, own, onSaved, onTask, onLogout }: { id: string; own: boolean; onSaved: (name: string) => void; onTask: (id: string) => void; onLogout?: () => void }) {
+export function ProfilePanel({ id, own, onSaved, onTask, onLogout }: { id: string; own: boolean; onSaved: (name: string, avatarUrl?: string) => void; onTask: (id: string) => void; onLogout?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -43,7 +43,7 @@ export function ProfilePanel({ id, own, onSaved, onTask, onLogout }: { id: strin
     try {
       const form = new FormData(); form.set("photo", file);
       const data = await request<{ avatarUrl: string }>("/api/profile/avatar", { method: "POST", body: form });
-      setProfile((current) => current && { ...current, avatarUrl: data.avatarUrl }); setSaved(true); setAvatarFile(null);
+      setProfile((current) => current && { ...current, avatarUrl: data.avatarUrl }); onSaved(profile?.fullName || "", data.avatarUrl); setSaved(true); setAvatarFile(null);
     } catch (err) { throw err instanceof Error ? err : new Error("Не удалось загрузить фотографию"); }
     finally { setBusy(false); }
   }

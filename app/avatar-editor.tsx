@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 
-const PREVIEW = 280;
+const PREVIEW = 240;
+const MAX_ZOOM = 4;
+type Point = { x: number; y: number };
+type Gesture = { center: Point; distance: number; zoom: number; offset: Point };
 
 export function AvatarEditor({ file, busy, onCancel, onSave }: { file: File; busy: boolean; onCancel: () => void; onSave: (file: File) => Promise<void> }) {
   const url = useMemo(() => URL.createObjectURL(file), [file]);
@@ -11,7 +14,10 @@ export function AvatarEditor({ file, busy, onCancel, onSave }: { file: File; bus
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [error, setError] = useState("");
-  const drag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
+  const pointers = useRef(new Map<number, Point>());
+  const gesture = useRef<Gesture | null>(null);
+  const zoomRef = useRef(1);
+  const offsetRef = useRef<Point>({ x: 0, y: 0 });
   const image = useRef<HTMLImageElement | null>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
 
@@ -33,9 +39,43 @@ export function AvatarEditor({ file, busy, onCancel, onSave }: { file: File; bus
   const base = dimensions.width && dimensions.height ? Math.max(PREVIEW / dimensions.width, PREVIEW / dimensions.height) : 0;
   const width = dimensions.width * base * zoom;
   const height = dimensions.height * base * zoom;
-  const limitX = Math.max(0, (width - PREVIEW) / 2);
-  const limitY = Math.max(0, (height - PREVIEW) / 2);
-  const clamp = (x: number, y: number) => ({ x: Math.max(-limitX, Math.min(limitX, x)), y: Math.max(-limitY, Math.min(limitY, y)) });
+  function moveTo(nextZoom: number, nextOffset: Point) {
+    const safeZoom = Math.max(1, Math.min(MAX_ZOOM, nextZoom));
+    const limitX = Math.max(0, (dimensions.width * base * safeZoom - PREVIEW) / 2);
+    const limitY = Math.max(0, (dimensions.height * base * safeZoom - PREVIEW) / 2);
+    const safeOffset = { x: Math.max(-limitX, Math.min(limitX, nextOffset.x)), y: Math.max(-limitY, Math.min(limitY, nextOffset.y)) };
+    zoomRef.current = safeZoom;
+    offsetRef.current = safeOffset;
+    setZoom(safeZoom);
+    setOffset(safeOffset);
+  }
+
+  function point(event: { currentTarget: HTMLDivElement; clientX: number; clientY: number }): Point {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  function resetGesture() {
+    const active = [...pointers.current.values()].slice(0, 2);
+    if (!active.length) { gesture.current = null; return; }
+    const center = active.length === 1 ? active[0] : { x: (active[0].x + active[1].x) / 2, y: (active[0].y + active[1].y) / 2 };
+    const distance = active.length === 1 ? 1 : Math.hypot(active[0].x - active[1].x, active[0].y - active[1].y);
+    gesture.current = { center, distance: Math.max(1, distance), zoom: zoomRef.current, offset: offsetRef.current };
+  }
+
+  function movePointers() {
+    const active = [...pointers.current.values()].slice(0, 2);
+    const start = gesture.current;
+    if (!start || !active.length) return;
+    const center = active.length === 1 ? active[0] : { x: (active[0].x + active[1].x) / 2, y: (active[0].y + active[1].y) / 2 };
+    const distance = active.length === 1 ? start.distance : Math.max(1, Math.hypot(active[0].x - active[1].x, active[0].y - active[1].y));
+    const nextZoom = Math.max(1, Math.min(MAX_ZOOM, start.zoom * distance / start.distance));
+    const ratio = nextZoom / start.zoom;
+    moveTo(nextZoom, {
+      x: center.x - PREVIEW / 2 + (start.offset.x - (start.center.x - PREVIEW / 2)) * ratio,
+      y: center.y - PREVIEW / 2 + (start.offset.y - (start.center.y - PREVIEW / 2)) * ratio,
+    });
+  }
 
   async function save() {
     if (!image.current || !base) return;
@@ -57,12 +97,11 @@ export function AvatarEditor({ file, busy, onCancel, onSave }: { file: File; bus
     <section className="avatar-editor" role="dialog" aria-modal="true" aria-labelledby="avatar-editor-title">
       <button ref={cancelButton} type="button" className="avatar-editor-close" aria-label="Закрыть редактор" disabled={busy} onClick={onCancel}><X size={20} /></button>
       <h2 id="avatar-editor-title">Фото профиля</h2>
-      <p>Перетащите фото, чтобы выбрать область внутри круга.</p>
-      <div className="avatar-editor-stage" style={{ width: PREVIEW, height: PREVIEW }} onPointerDown={(event) => { if (busy || !dimensions.width) return; drag.current = { x: event.clientX, y: event.clientY, startX: offset.x, startY: offset.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (drag.current) setOffset(clamp(drag.current.startX + event.clientX - drag.current.x, drag.current.startY + event.clientY - drag.current.y)); }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+      <p>Перемещайте фото одним пальцем, увеличивайте двумя.</p>
+      <div className="avatar-editor-stage" style={{ width: PREVIEW, height: PREVIEW }} onPointerDown={(event) => { if (busy || !dimensions.width) return; pointers.current.set(event.pointerId, point(event)); event.currentTarget.setPointerCapture(event.pointerId); resetGesture(); }} onPointerMove={(event) => { if (!pointers.current.has(event.pointerId)) return; pointers.current.set(event.pointerId, point(event)); movePointers(); }} onPointerUp={(event) => { pointers.current.delete(event.pointerId); resetGesture(); }} onPointerCancel={(event) => { pointers.current.delete(event.pointerId); resetGesture(); }} onWheel={(event) => { if (busy || !dimensions.width) return; event.preventDefault(); const center = point(event); const nextZoom = Math.max(1, Math.min(MAX_ZOOM, zoomRef.current * (event.deltaY < 0 ? 1.08 : 1 / 1.08))); const ratio = nextZoom / zoomRef.current; moveTo(nextZoom, { x: center.x - PREVIEW / 2 + (offsetRef.current.x - (center.x - PREVIEW / 2)) * ratio, y: center.y - PREVIEW / 2 + (offsetRef.current.y - (center.y - PREVIEW / 2)) * ratio }); }}>
         {url && dimensions.width > 0 && <img src={url} alt="Предпросмотр фотографии профиля" draggable={false} style={{ width, height, left: PREVIEW / 2 - width / 2 + offset.x, top: PREVIEW / 2 - height / 2 + offset.y }} />}
         <div className="avatar-editor-mask" aria-hidden="true" />
       </div>
-      <label className="avatar-editor-zoom">Масштаб<input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy || !dimensions.width} onChange={(event) => { const next = Number(event.target.value); const nextWidth = dimensions.width * base * next; const nextHeight = dimensions.height * base * next; setZoom(next); setOffset({ x: Math.max(-(nextWidth - PREVIEW) / 2, Math.min((nextWidth - PREVIEW) / 2, offset.x)), y: Math.max(-(nextHeight - PREVIEW) / 2, Math.min((nextHeight - PREVIEW) / 2, offset.y)) }); }} /></label>
       {error && <p className="field-error" role="alert">{error}</p>}
       <div className="avatar-editor-actions"><button type="button" className="secondary-button" disabled={busy} onClick={onCancel}>Отмена</button><button type="button" className="primary-button" disabled={busy || !dimensions.width} onClick={() => void save()}>{busy ? "Сохраняем…" : "Сохранить фото"}</button></div>
     </section>

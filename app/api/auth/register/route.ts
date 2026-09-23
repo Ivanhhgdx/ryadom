@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     await db.prepare("INSERT INTO users (id, login, full_name, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)")
       .bind(id, login, fullName, hash, salt, Date.now()).run();
     const token = await createSession(id);
-    return json({ user: { id, login, fullName } }, { status: 201, headers: { "set-cookie": sessionCookie(token, request) } });
+    return json({ user: { id, login, fullName, avatarUrl: null } }, { status: 201, headers: { "set-cookie": sessionCookie(token, request) } });
   } catch (error) {
     console.error("register", error);
     return errorResponse("Не получилось создать аккаунт. Попробуйте ещё раз.", 500);
