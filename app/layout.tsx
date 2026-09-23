@@ -12,6 +12,8 @@ export const metadata: Metadata = {
     shortcut: "/ryadom-logo.png",
     apple: "/ryadom-logo.png",
   },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Рядом", statusBarStyle: "default" },
 };
 
 export default function RootLayout({

@@ -13,7 +13,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       if (!row.applicationId || !await getChat(row.applicationId, user.id) || !await getRawDb().prepare("SELECT id FROM messages WHERE media_id = ?").bind(id).first()) return errorResponse("Фотография недоступна.", 403);
     }
   }
-  const object = await (env as unknown as { BUCKET: R2Bucket }).BUCKET.get(`media/${id}`);
+  const bucket = (env as unknown as { BUCKET: R2Bucket }).BUCKET;
+  const preview = new URL(request.url).searchParams.get("preview") === "1";
+  const thumbnail = preview ? await bucket.get(`media/previews/${id}`) : null;
+  const object = thumbnail || await bucket.get(`media/${id}`);
   if (!object) return errorResponse("Фотография не найдена.", 404);
-  return new Response(object.body, { headers: { "Content-Type": row.mime, "Cache-Control": isPublic ? "public, max-age=3600" : "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox" } });
+  return new Response(object.body, { headers: { "Content-Type": thumbnail ? "image/jpeg" : row.mime, "Cache-Control": isPublic ? "public, max-age=3600" : "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox" } });
 }

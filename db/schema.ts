@@ -38,6 +38,8 @@ export const tasks = sqliteTable("tasks", {
   urgent: integer("urgent", { mode: "boolean" }).notNull().default(false),
   commissionRate: integer("commission_rate").notNull().default(7),
   createdAt: integer("created_at").notNull(),
+  archivedAt: integer("archived_at"),
+  deletedAt: integer("deleted_at"),
 });
 
 export const favorites = sqliteTable(
@@ -113,6 +115,20 @@ export const chatReads = sqliteTable("chat_reads", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   lastReadId: integer("last_read_id").notNull().default(0),
 }, (t) => ({ pk: primaryKey({ columns: [t.applicationId, t.userId] }) }));
+
+export const pushConfig = sqliteTable("push_config", {
+  id: integer("id").primaryKey(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+});
+
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  endpoint: text("endpoint").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => ({ userIndex: index("push_subscriptions_user_idx").on(t.userId) }));
 
 export const geocodeCache = sqliteTable("geocode_cache", {
   query: text("query").primaryKey(),

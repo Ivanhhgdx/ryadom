@@ -43,6 +43,20 @@
       "when": 1790070149428,
       "tag": "0005_greedy_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790146615992,
+      "tag": "0006_stale_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790147454012,
+      "tag": "0007_chief_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

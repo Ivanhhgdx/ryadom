@@ -1,5 +1,7 @@
 import { errorResponse, getCurrentUser, getRawDb, json } from "@/lib/server";
 import { allowAction, getChat } from "@/lib/chat";
+import { sendChatPush } from "@/lib/push";
+import { waitUntil } from "cloudflare:workers";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser(request);
   if (!user) return errorResponse("Войдите в аккаунт.", 401);
@@ -18,7 +20,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const user = await getCurrentUser(request);
     if (!user) return errorResponse("Войдите в аккаунт.", 401);
     const { id } = await params;
-    if (!await getChat(id, user.id)) return errorResponse("Чат недоступен.", 404);
+    const chat = await getChat(id, user.id);
+    if (!chat) return errorResponse("Чат недоступен.", 404);
     const data = await request.json() as { body?: string; mediaId?: string; clientId?: string };
     const body = typeof data.body === "string" ? data.body.trim() : "";
     if ((!body && !data.mediaId) || body.length > 4000 || typeof data.clientId !== "string" || !/^[a-f0-9-]{36}$/.test(data.clientId)) return errorResponse("Сообщение: до 4000 символов или фотография.");
@@ -28,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!await allowAction(`chat:${user.id}`, 40, 60000)) return errorResponse("Слишком много сообщений. Подождите минуту.", 429);
     if (data.mediaId && !await db.prepare("SELECT id FROM media WHERE id = ? AND owner_id = ? AND purpose = 'chat' AND application_id = ? AND NOT EXISTS (SELECT 1 FROM messages WHERE media_id = media.id)").bind(data.mediaId, user.id, id).first()) return errorResponse("Прикрепите новую фотографию из этого чата.");
     const row = await db.prepare("INSERT INTO messages (application_id, sender_id, client_id, body, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(sender_id, client_id) DO NOTHING RETURNING id").bind(id, user.id, data.clientId, body, data.mediaId || null, Date.now()).first();
+    if (row) waitUntil(sendChatPush(chat.ownerId === user.id ? chat.applicantId : chat.ownerId, id, user.fullName, body).catch((error) => console.error("push delivery", error)));
     return json(row || { ok: true }, { status: 201 });
   } catch (error) { console.error("send message", error); return errorResponse("Сообщение не отправлено. Повторите отправку.", 500); }
 }

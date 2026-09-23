@@ -7,7 +7,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!profile) return errorResponse("Профиль не найден.", 404);
   const reviews = await db.prepare(`SELECT r.id, r.rating, r.message, r.created_at AS createdAt, u.id AS authorId, u.full_name AS authorName FROM reviews r JOIN users u ON r.reviewer_id = u.id WHERE r.reviewee_id = ? ORDER BY r.created_at DESC`).bind(id).all();
   const stats = await db.prepare(`SELECT COUNT(*) AS completed FROM applications a JOIN tasks t ON t.id = a.task_id WHERE a.status = 'done' AND (a.applicant_id = ? OR t.owner_id = ?)`).bind(id, id).first();
-  const tasks = await db.prepare(`SELECT id, title, price FROM tasks WHERE owner_id = ? ORDER BY created_at DESC LIMIT 20`).bind(id).all();
+  const tasks = await db.prepare(`SELECT id, title, price FROM tasks WHERE owner_id = ? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 20`).bind(id).all();
   return json({ profile: { ...profile, avatarUrl: profile.avatarKey ? `/api/avatars/${encodeURIComponent(String(profile.avatarKey))}` : null, rating: reviews.results.length ? reviews.results.reduce((sum, review) => sum + Number(review.rating), 0) / reviews.results.length : null, reviewCount: reviews.results.length, completed: stats?.completed ?? 0, reviews: reviews.results, tasks: tasks.results } });
 }
 

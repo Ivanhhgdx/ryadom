@@ -2,6 +2,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Camera, Check, Loader2, Star, UserRound } from "lucide-react";
 import { Notifications } from "./notifications";
+import { AvatarEditor } from "./avatar-editor";
+import { MAX_PHOTO_BYTES } from "@/lib/photo";
 
 type Profile = { id: string; login: string; fullName: string; bio: string; avatarUrl: string | null; rating: number | null; reviewCount: number; completed: number; createdAt: number; reviews: Array<{ id: string; rating: number; message: string; authorName: string }>; tasks: Array<{ id: string; title: string; price: number }> };
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -11,12 +13,13 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
-export function ProfilePanel({ id, own, onSaved, onTask }: { id: string; own: boolean; onSaved: (name: string) => void; onTask: (id: string) => void }) {
+export function ProfilePanel({ id, own, onSaved, onTask, onLogout }: { id: string; own: boolean; onSaved: (name: string) => void; onTask: (id: string) => void; onLogout?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   useEffect(() => {
     let active = true;
     void request<{ profile: Profile }>(`/api/profiles/${id}`).then((data) => { if (active) setProfile(data.profile); }).catch((err) => { if (active) setError(err.message); });
@@ -35,23 +38,30 @@ export function ProfilePanel({ id, own, onSaved, onTask }: { id: string; own: bo
     finally { setBusy(false); }
   }
 
-  async function upload(file: File | undefined) {
-    if (!file) return;
+  async function upload(file: File) {
     setBusy(true); setError("");
     try {
-      if (file.size > 3 * 1024 * 1024) throw new Error("Выберите фотографию до 3 МБ.");
       const form = new FormData(); form.set("photo", file);
       const data = await request<{ avatarUrl: string }>("/api/profile/avatar", { method: "POST", body: form });
-      setProfile((current) => current && { ...current, avatarUrl: data.avatarUrl }); setSaved(true);
-    } catch (err) { setError(err instanceof Error ? err.message : "Не удалось загрузить фотографию"); }
+      setProfile((current) => current && { ...current, avatarUrl: data.avatarUrl }); setSaved(true); setAvatarFile(null);
+    } catch (err) { throw err instanceof Error ? err : new Error("Не удалось загрузить фотографию"); }
     finally { setBusy(false); }
+  }
+
+  function selectAvatar(file: File | undefined) {
+    if (!file) return;
+    setSaved(false); setError("");
+    if (file.size === 0 || file.size > MAX_PHOTO_BYTES) { setError("Выберите фотографию до 100 МБ."); return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setError("Поддерживаются JPEG, PNG и WebP."); return; }
+    setAvatarFile(file);
   }
 
   if (!profile) return <div className="modal-content">{error ? <p role="alert">{error}</p> : <Loader2 className="spin" aria-label="Загрузка профиля" />}</div>;
   return <div className="modal-content profile-content">
     <div className="profile-cover" />
     <div className="profile-avatar">{profile.avatarUrl ? <img src={profile.avatarUrl} alt={`Фото ${profile.fullName}`} /> : <UserRound size={42} strokeWidth={1.4} />}</div>
-    {own && <label className="photo-upload"><Camera size={16} />{busy ? "Загрузка…" : "Изменить фото"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => void upload(event.target.files?.[0])} /><small>JPEG, PNG или WebP, до 3 МБ. Фото будет публичным.</small></label>}
+    {own && <label className="photo-upload"><Camera size={16} />Изменить фото<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { selectAvatar(event.target.files?.[0]); event.target.value = ""; }} /><small>JPEG, PNG или WebP, до 100 МБ. Фото будет публичным.</small></label>}
+    {avatarFile && <AvatarEditor file={avatarFile} busy={busy} onCancel={() => setAvatarFile(null)} onSave={upload} />}
     <h2>{profile.fullName}</h2><p className="profile-login">@{profile.login} · Красноярск</p>
     <div className="profile-stats"><div><b><Star size={18} fill={profile.rating ? "#ffbd16" : "none"} color={profile.rating ? "#d99e00" : "#9ba3ad"} />{profile.rating ? profile.rating.toFixed(1) : "—"}</b><span>{profile.reviewCount ? `${profile.reviewCount} отзывов` : "Нет оценок"}</span></div><div><b>{profile.completed}</b><span>Завершено задач</span></div><div><b>{new Date(profile.createdAt).getFullYear()}</b><span>На Рядом с</span></div></div>
     {error && <p className="inline-error" role="alert">{error}</p>}{saved && <p className="save-success" role="status"><Check size={16} /> Изменения сохранены</p>}
@@ -59,6 +69,7 @@ export function ProfilePanel({ id, own, onSaved, onTask }: { id: string; own: bo
     {own && <Notifications userId={id} onTask={onTask} inline />}
     <section className="profile-section"><h3>Отзывы <span>{profile.reviewCount}</span></h3>{profile.reviews.length ? profile.reviews.map((review) => <article className="review-card" key={review.id}><strong>{review.authorName}</strong><div className="rating-stars" aria-label={`${review.rating} из 5`}>{[1,2,3,4,5].map((value) => <Star key={value} size={16} fill={value <= review.rating ? "currentColor" : "none"} />)}</div><p>{review.message}</p><small>По завершённой задаче</small></article>) : <p>Отзывов пока нет. Оценки появляются после завершения совместной задачи.</p>}</section>
     <section className="profile-section"><h3>Объявления</h3>{profile.tasks.length ? profile.tasks.map((task) => <button className="profile-task" key={task.id} onClick={() => onTask(task.id)}><span>{task.title}</span><b>{task.price ? `${task.price.toLocaleString("ru-RU")} ₽` : "Договорная"}</b></button>) : <p>Пока нет объявлений.</p>}</section>
+    {own && onLogout && <button className="secondary-button profile-logout" onClick={onLogout}>Выйти из аккаунта</button>}
   </div>;
 }
 

@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "Рядом",
+  "short_name": "Рядом",
+  "description": "Поручения и подработка рядом",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/ryadom-logo.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

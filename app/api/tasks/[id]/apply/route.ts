@@ -19,7 +19,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const message = body.message?.trim() ?? "";
   if (message.length < 4 || message.length > 3000) return errorResponse("Сообщение должно содержать от 4 до 3000 символов.");
   const db = getRawDb();
-  const task = await db.prepare("SELECT owner_id as ownerId FROM tasks WHERE id = ? LIMIT 1").bind(id).first<{ ownerId: string }>();
+  const task = await db.prepare("SELECT owner_id as ownerId FROM tasks WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL LIMIT 1").bind(id).first<{ ownerId: string }>();
   if (!task) return errorResponse("Объявление не найдено.", 404);
   if (task.ownerId === user.id) return errorResponse("Нельзя откликнуться на своё объявление.");
   const taken = await db.prepare("SELECT id FROM applications WHERE task_id = ? AND status IN ('accepted', 'done') LIMIT 1").bind(id).first();

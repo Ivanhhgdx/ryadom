@@ -1,5 +1,6 @@
 import { errorResponse, getCurrentUser, getRawDb, json } from "../../../lib/server";
 import { districts } from "../../../lib/districts";
+import { validCategory } from "../../../lib/categories";
 
 export async function GET(request: Request) {
   try {
@@ -12,17 +13,23 @@ export async function GET(request: Request) {
     const selectedDistricts = url.searchParams.getAll("district");
     const workMode = url.searchParams.get("workMode");
     const clauses = ["1 = 1"];
+    clauses.push("t.deleted_at IS NULL");
+    if (view !== "mine") clauses.push("t.archived_at IS NULL");
     const bindings: (string | number)[] = [currentUser?.id ?? ""];
     if ((view === "mine" || view === "saved") && !currentUser) return errorResponse("Войдите, чтобы открыть этот раздел.", 401);
     if (view === "mine" && currentUser) clauses.push("t.owner_id = ?");
     if (view === "mine" && currentUser) bindings.push(currentUser.id);
     if (view === "saved") clauses.push("f.task_id IS NOT NULL");
-    if (category && category !== "all") { clauses.push("t.category = ?"); bindings.push(category); }
+    if (category && category !== "all") {
+      if (!validCategory(category)) return errorResponse("Неизвестная категория.");
+      if (category.includes(":")) { clauses.push("t.category = ?"); bindings.push(category); }
+      else { clauses.push("(t.category = ? OR t.category LIKE ?)"); bindings.push(category, `${category}:%`); }
+    }
     if (urgent) clauses.push("t.urgent = 1");
     if (workMode === "remote" || workMode === "onsite") { clauses.push("t.work_mode = ?"); bindings.push(workMode); }
     if (selectedDistricts.length) { clauses.push(`t.district IN (${selectedDistricts.map(() => "?").join(",")})`); bindings.push(...selectedDistricts); }
     const db = getRawDb();
-    const result = await db.prepare(`SELECT t.work_mode AS workMode, (SELECT id FROM media WHERE task_id = t.id ORDER BY created_at, id LIMIT 1) AS coverId, (SELECT status FROM applications a WHERE a.task_id = t.id AND a.status IN ('accepted', 'done') LIMIT 1) AS workStatus, t.id, t.title, t.description, t.category, t.price, t.address, t.district, t.lat, t.lng, t.urgent, t.commission_rate as commissionRate, t.created_at as createdAt, u.id as ownerId, u.full_name as ownerName, CASE WHEN f.task_id IS NULL THEN 0 ELSE 1 END as isFavorite FROM tasks t JOIN users u ON u.id = t.owner_id LEFT JOIN favorites f ON f.task_id = t.id AND f.user_id = ? WHERE ${clauses.join(" AND ")} ORDER BY t.urgent DESC, t.created_at DESC`).bind(...bindings).all();
+    const result = await db.prepare(`SELECT t.work_mode AS workMode, t.archived_at AS archivedAt, (SELECT id FROM media WHERE task_id = t.id ORDER BY created_at, id LIMIT 1) AS coverId, (SELECT status FROM applications a WHERE a.task_id = t.id AND a.status IN ('accepted', 'done') LIMIT 1) AS workStatus, t.id, t.title, t.description, t.category, t.price, t.address, t.district, t.lat, t.lng, t.urgent, t.commission_rate as commissionRate, t.created_at as createdAt, u.id as ownerId, u.full_name as ownerName, CASE WHEN f.task_id IS NULL THEN 0 ELSE 1 END as isFavorite FROM tasks t JOIN users u ON u.id = t.owner_id LEFT JOIN favorites f ON f.task_id = t.id AND f.user_id = ? WHERE ${clauses.join(" AND ")} ORDER BY (t.archived_at IS NOT NULL), t.urgent DESC, t.created_at DESC`).bind(...bindings).all();
     const matching = query ? result.results.filter((row) => [row.title, row.description, row.address].some((value) => String(value).toLocaleLowerCase("ru").includes(query.toLocaleLowerCase("ru")))) : result.results;
     return json({ tasks: matching });
   } catch (error) { console.error("tasks get", error); return errorResponse("Не удалось загрузить объявления.", 500); }
@@ -47,7 +54,7 @@ export async function POST(request: Request) {
     const district = workMode === "remote" ? null : body.district;
     if (workMode === "onsite" && (!district || !districts.some((item) => item === district))) return errorResponse("Проверьте район Красноярска.");
     if (title.length > 120 || description.length > 5000 || address.length > 250 || price > 10000000 || lat < 55.8 || lat > 56.3 || lng < 92.5 || lng > 93.3) return errorResponse("Проверьте данные. Адрес должен находиться в Красноярске.");
-    if (!["delivery", "digital", "repair", "home", "study"].includes(category)) return errorResponse("Выберите категорию.");
+    if (!validCategory(category)) return errorResponse("Выберите категорию.");
     const id = crypto.randomUUID();
     const now = Date.now();
     const imageIds = body.imageIds ?? [];
