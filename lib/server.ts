@@ -26,12 +26,12 @@ export async function digestHex(value: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
-export async function allowAuthAttempt(request: Request, login: string, mode: "login" | "register") {
+export async function allowAuthAttempt(request: Request, login: string, mode: "login" | "register" | "email") {
   const db = getRawDb();
   const now = Date.now();
   const ip = request.headers.get("cf-connecting-ip") || "local";
-  const limit = mode === "register" ? 20 : 60;
-  const keys = [{ key: `${mode}:ip:${await digestHex(ip)}`, limit }, ...(mode === "login" ? [{ key: `login:user:${await digestHex(login)}`, limit: 10 }] : [])];
+  const limit = mode === "login" ? 60 : 20;
+  const keys = [{ key: `${mode}:ip:${await digestHex(ip)}`, limit }, ...(mode === "login" || mode === "email" ? [{ key: `${mode}:user:${await digestHex(login)}`, limit: mode === "email" ? 3 : 10 }] : [])];
   for (const item of keys) {
     const row = await db.prepare("INSERT INTO auth_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = CASE WHEN expires_at < ? THEN 1 ELSE count + 1 END, expires_at = CASE WHEN expires_at < ? THEN excluded.expires_at ELSE expires_at END RETURNING count").bind(item.key, now + 600000, now, now).first<{ count: number }>();
     if (!row || row.count > item.limit) return false;
@@ -40,14 +40,21 @@ export async function allowAuthAttempt(request: Request, login: string, mode: "l
   return true;
 }
 
-export async function hashPassword(password: string, saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16))), iterations = 100000) {
+export async function hashPassword(password: string, saltHex = bytesToHex(crypto.getRandomValues(new Uint8Array(16))), iterations = 600000) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", salt: hexToBytes(saltHex), iterations, hash: "SHA-256" },
     key,
     256,
   );
-  return { hash: `${iterations === 100000 ? "v2:" : ""}${bytesToHex(new Uint8Array(bits))}`, salt: saltHex };
+  return { hash: `${iterations === 600000 ? "v3:" : iterations === 100000 ? "v2:" : ""}${bytesToHex(new Uint8Array(bits))}`, salt: saltHex };
+}
+
+export function passwordHashesEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return difference === 0;
 }
 
 function parseCookies(request: Request) {

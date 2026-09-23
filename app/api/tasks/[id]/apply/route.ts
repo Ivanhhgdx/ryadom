@@ -1,4 +1,5 @@
 import { errorResponse, getCurrentUser, getRawDb, json } from "../../../../../lib/server";
+import { recordFlame } from "../../../../../lib/flames";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser(request);
@@ -46,10 +47,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!task || task.ownerId !== user.id) return errorResponse("Только заказчик может управлять задачей.", 403);
   const application = await db.prepare("SELECT applicant_id AS applicantId FROM applications WHERE id = ? AND task_id = ?").bind(body.applicationId, id).first<{ applicantId: string }>();
   if (!application) return errorResponse("Отклик не найден.", 404);
+  const now = Date.now();
   const update = body.status === "accepted"
     ? await db.prepare("UPDATE applications SET status = 'accepted' WHERE id = ? AND task_id = ? AND status = 'new' AND NOT EXISTS (SELECT 1 FROM applications WHERE task_id = ? AND status IN ('accepted', 'done'))").bind(body.applicationId, id, id).run()
-    : await db.prepare("UPDATE applications SET status = 'done' WHERE id = ? AND task_id = ? AND status = 'accepted'").bind(body.applicationId, id).run();
+    : await db.prepare("UPDATE applications SET status = 'done', completed_at = ? WHERE id = ? AND task_id = ? AND status = 'accepted'").bind(now, body.applicationId, id).run();
   if (!update.meta.changes) return errorResponse("Статус уже изменился. Откройте объявление повторно.", 409);
-  await db.prepare("INSERT INTO notifications (id, user_id, task_id, message, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), application.applicantId, id, body.status === "accepted" ? "Вас выбрали исполнителем" : "Заказчик подтвердил завершение задачи. Оставьте отзыв.", Date.now()).run();
-  return json({ ok: true });
+  const flame = body.status === "done" ? await recordFlame(application.applicantId, id, now) : null;
+  await db.prepare("INSERT INTO notifications (id, user_id, task_id, message, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), application.applicantId, id, body.status === "accepted" ? "Вас выбрали исполнителем" : flame ? `Работа завершена. Получен ${flame.streak}-й огонёк!` : "Заказчик подтвердил завершение задачи. Оставьте отзыв.", now).run();
+  return json({ ok: true, flame });
 }

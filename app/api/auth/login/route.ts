@@ -1,4 +1,4 @@
-import { allowAuthAttempt, createSession, errorResponse, getRawDb, hashPassword, json, sessionCookie } from "../../../../lib/server";
+import { allowAuthAttempt, createSession, errorResponse, getRawDb, hashPassword, json, passwordHashesEqual, sessionCookie } from "../../../../lib/server";
 
 export async function POST(request: Request) {
   try {
@@ -11,8 +11,12 @@ export async function POST(request: Request) {
     const user = await db.prepare("SELECT id, login, full_name as fullName, avatar_key as avatarKey, password_hash as passwordHash, salt FROM users WHERE login = ? LIMIT 1")
       .bind(login).first<{ id: string; login: string; fullName: string; avatarKey: string | null; passwordHash: string; salt: string }>();
     if (!user) return errorResponse("Неверный логин или пароль.", 401);
-    const candidate = await hashPassword(password, user.salt, user.passwordHash.startsWith("v2:") ? 100000 : 120000);
-    if (candidate.hash !== user.passwordHash) return errorResponse("Неверный логин или пароль.", 401);
+    const candidate = await hashPassword(password, user.salt, user.passwordHash.startsWith("v3:") ? 600000 : user.passwordHash.startsWith("v2:") ? 100000 : 120000);
+    if (!passwordHashesEqual(candidate.hash, user.passwordHash)) return errorResponse("Неверный логин или пароль.", 401);
+    if (!user.passwordHash.startsWith("v3:")) {
+      const upgraded = await hashPassword(password);
+      await db.prepare("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?").bind(upgraded.hash, upgraded.salt, user.id).run();
+    }
     const token = await createSession(user.id);
     return json({ user: { id: user.id, login: user.login, fullName: user.fullName, avatarUrl: user.avatarKey ? `/api/avatars/${user.avatarKey}` : null } }, { headers: { "set-cookie": sessionCookie(token, request) } });
   } catch (error) {

@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!await db.prepare("SELECT id FROM media WHERE id = ? AND owner_id = ? AND purpose = 'task' AND (task_id IS NULL OR task_id = ?)").bind(imageId, user.id, id).first()) return errorResponse("Одна из фотографий недоступна.");
   }
   await db.batch([
-    db.prepare("UPDATE tasks SET title = ?, description = ?, category = ?, price = ?, address = ?, district = ?, work_mode = ?, lat = ?, lng = ?, urgent = ?, commission_rate = ? WHERE id = ? AND owner_id = ? AND deleted_at IS NULL").bind(title, description, category, Math.round(price), address, district, workMode, lat, lng, body.urgent ? 1 : 0, body.urgent ? 12 : 7, id, user.id),
+    db.prepare("UPDATE tasks SET title = ?, description = ?, category = ?, price = ?, address = ?, district = ?, work_mode = ?, lat = ?, lng = ?, urgent = ?, commission_rate = ? WHERE id = ? AND owner_id = ? AND deleted_at IS NULL").bind(title, description, category, Math.round(price), address, district, workMode, lat, lng, body.urgent ? 1 : 0, body.urgent ? 7 : 5, id, user.id),
     db.prepare("UPDATE media SET task_id = NULL WHERE task_id = ? AND owner_id = ?").bind(id, user.id),
     ...imageIds.map((imageId) => db.prepare("UPDATE media SET task_id = ? WHERE id = ? AND owner_id = ? AND purpose = 'task' AND task_id IS NULL").bind(id, imageId, user.id)),
   ]);

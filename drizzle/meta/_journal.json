@@ -57,6 +57,13 @@
       "when": 1790147454012,
       "tag": "0007_chief_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790151041880,
+      "tag": "0008_solid_owl",
+      "breakpoints": true
     }
   ]
 }

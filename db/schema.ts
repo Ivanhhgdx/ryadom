@@ -8,11 +8,12 @@ export const users = sqliteTable(
     fullName: text("full_name").notNull(),
     bio: text("bio").notNull().default(""),
     avatarKey: text("avatar_key"),
+    email: text("email"),
     passwordHash: text("password_hash").notNull(),
     salt: text("salt").notNull(),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => ({ loginUnique: uniqueIndex("users_login_unique").on(table.login) }),
+  (table) => ({ loginUnique: uniqueIndex("users_login_unique").on(table.login), emailUnique: uniqueIndex("users_email_unique").on(table.email) }),
 );
 
 export const sessions = sqliteTable("sessions", {
@@ -21,7 +22,7 @@ export const sessions = sqliteTable("sessions", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: integer("expires_at").notNull(),
   createdAt: integer("created_at").notNull(),
-});
+}, (table) => ({ tokenUnique: uniqueIndex("sessions_token_hash_unique").on(table.tokenHash) }));
 
 export const tasks = sqliteTable("tasks", {
   id: text("id").primaryKey(),
@@ -61,6 +62,7 @@ export const applications = sqliteTable(
     message: text("message").notNull(),
     status: text("status").notNull().default("new"),
     createdAt: integer("created_at").notNull(),
+    completedAt: integer("completed_at"),
   },
   (table) => ({ applicantTaskUnique: uniqueIndex("applications_task_applicant_unique").on(table.taskId, table.applicantId) }),
 );
@@ -80,6 +82,33 @@ export const authLimits = sqliteTable("auth_limits", {
   count: integer("count").notNull(),
   expiresAt: integer("expires_at").notNull(),
 });
+
+export const emailCodes = sqliteTable("email_codes", {
+  email: text("email").primaryKey(),
+  codeHash: text("code_hash").notNull(),
+  purpose: text("purpose").notNull(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: integer("expires_at").notNull(),
+});
+
+export const flameDays = sqliteTable("flame_days", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: text("task_id").notNull().references(() => tasks.id),
+  day: text("day").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => ({ userDayUnique: uniqueIndex("flame_days_user_day_unique").on(table.userId, table.day), taskUnique: uniqueIndex("flame_days_task_unique").on(table.taskId) }));
+
+export const flameRewards = sqliteTable("flame_rewards", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  milestone: integer("milestone").notNull(),
+  amount: integer("amount").notNull(),
+  day: text("day").notNull(),
+  status: text("status").notNull().default("pending_review"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => ({ userMilestoneDayUnique: uniqueIndex("flame_rewards_user_milestone_day_unique").on(table.userId, table.milestone, table.day) }));
 
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
