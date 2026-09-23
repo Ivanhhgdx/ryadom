@@ -1,4 +1,4 @@
-import { createSession, errorResponse, getCurrentUser, getRawDb, hashPassword, json, sessionCookie } from "../../../../../lib/server";
+import { createSession, errorResponse, getCurrentUser, getRawDb, hashPassword, json, passwordHashesEqual, sessionCookie } from "../../../../../lib/server";
 import { emailCodeHash, emailEnabled, normalizeEmail } from "../../../../../lib/email-auth";
 
 export async function POST(request: Request) {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     .first<{ codeHash: string; purpose: string; userId: string | null; attempts: number; expiresAt: number }>();
   if (!row || row.expiresAt < Date.now() || row.attempts >= 5) return errorResponse("Код истёк. Запросите новый.", 400);
   await db.prepare("UPDATE email_codes SET attempts = attempts + 1 WHERE email = ?").bind(email).run();
-  if (await emailCodeHash(email, code) !== row.codeHash) return errorResponse("Неверный код.", 400);
+  if (!passwordHashesEqual(await emailCodeHash(email, code), row.codeHash)) return errorResponse("Неверный код.", 400);
   if (row.purpose === "link") {
     const current = await getCurrentUser(request);
     if (!current || current.id !== row.userId) return errorResponse("Войдите в исходный аккаунт повторно.", 401);

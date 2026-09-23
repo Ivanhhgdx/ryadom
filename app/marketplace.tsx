@@ -50,6 +50,7 @@ function categoryName(id: string) { return categoryLabel(id); }
 
 export default function Marketplace() {
   const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [workMode, setWorkMode] = useState("all");
@@ -112,7 +113,7 @@ export default function Marketplace() {
     const refresh = window.setInterval(() => { if (!document.hidden && !modal) void loadTasks(category, query, view, true); }, 60000);
     return () => clearInterval(refresh);
   }, [loadTasks, modal, category, query, view]);
-  useEffect(() => { void api<{ user: User | null }>("/api/auth/me").then((data) => setUser(data.user)).catch(() => undefined); }, []);
+  useEffect(() => { void api<{ user: User | null }>("/api/auth/me").then((data) => setUser(data.user)).catch(() => undefined).finally(() => setAuthReady(true)); }, []);
   useEffect(() => {
     const chat = new URLSearchParams(window.location.search).get("chat");
     if (chat && /^[a-f0-9-]{36}$/.test(chat)) window.location.replace(`/messages?chat=${encodeURIComponent(chat)}`);
@@ -229,7 +230,7 @@ export default function Marketplace() {
 
       <main className="main-content">
         {user && <PushOnboarding key={user.id} userId={user.id} />}
-        <WelcomeAndFlames userId={user?.id} />
+        {authReady && <WelcomeAndFlames userId={user?.id} />}
         <div className="breadcrumbs">Главная <span>•</span> Объявления <span>•</span> Красноярск</div>
         <div className="heading-row"><div><h1>Задачи рядом</h1><p>Найди исполнителя или подработку в своём городе.</p></div><div className="view-switch"><button className={view === "all" ? "active" : ""} onClick={() => { setView("all"); void loadTasks(category, query, "all"); }}><ListIcon /> Все объявления</button><button className={view === "mine" ? "active" : ""} onClick={() => chooseView("mine")}>Мои объявления</button></div></div>
         <div className="map-toggle-row"><button className={showMap ? "map-toggle active" : "map-toggle"} onClick={() => { setShowMap((current) => !current);  }}><MapIcon size={17} />{showMap ? "Скрыть карту" : "Открыть карту"}</button></div>
