@@ -4,6 +4,7 @@ import { FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useRef, use
 import Link from "next/link";
 import { ChatBadge } from "./chat-badge";
 import { disableCurrentPush } from "./push-settings";
+import { PushOnboarding } from "./push-onboarding";
 import { Notifications } from "./notifications";
 import { districts } from "@/lib/districts";
 import { categoryGroups, categoryLabel } from "@/lib/categories";
@@ -200,7 +201,7 @@ export default function Marketplace() {
     finally { setBusy(false); }
   }
 
-  async function logout() { try { await disableCurrentPush().catch(() => undefined); await api("/api/auth/logout", { method: "POST" }); setUser(null); setView("all"); await loadTasks(category, query, "all"); notify("Вы вышли из аккаунта"); } catch { notify("Не удалось выйти. Попробуйте снова."); } }
+  async function logout() { try { await disableCurrentPush(user?.id).catch(() => undefined); await api("/api/auth/logout", { method: "POST" }); setUser(null); setView("all"); await loadTasks(category, query, "all"); notify("Вы вышли из аккаунта"); } catch { notify("Не удалось выйти. Попробуйте снова."); } }
 
   async function submitApplication(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!selectedTask) return; setBusy(true);
@@ -225,6 +226,7 @@ export default function Marketplace() {
       <div className="brand-row"><form className="global-search" onSubmit={submitSearch}><Search size={21} /><input aria-label="Поиск по объявлениям" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Поиск по объявлениям" /><button type="submit">Найти</button></form></div>
 
       <main className="main-content">
+        {user && <PushOnboarding key={user.id} userId={user.id} />}
         <div className="breadcrumbs">Главная <span>•</span> Объявления <span>•</span> Красноярск</div>
         <div className="heading-row"><div><h1>Задачи рядом</h1><p>Найди исполнителя или подработку в своём городе.</p></div><div className="view-switch"><button className={view === "all" ? "active" : ""} onClick={() => { setView("all"); void loadTasks(category, query, "all"); }}><ListIcon /> Все объявления</button><button className={view === "mine" ? "active" : ""} onClick={() => chooseView("mine")}>Мои объявления</button></div></div>
         <div className="map-toggle-row"><button className={showMap ? "map-toggle active" : "map-toggle"} onClick={() => { setShowMap((current) => !current);  }}><MapIcon size={17} />{showMap ? "Скрыть карту" : "Открыть карту"}</button></div>

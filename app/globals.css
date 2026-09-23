@@ -407,6 +407,23 @@ button:active:not(:disabled) { transform: scale(.98); }
 .push-settings { margin: 4px 0 18px; }
 .push-settings .secondary-button { display: inline-flex; align-items: center; gap: 8px; margin-top: 0; }
 .push-settings p { margin: 8px 0 0; color: #69717b; font-size: 13px; line-height: 1.45; }
+.push-onboarding { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 20px; padding: 15px; border: 1px solid #f0dfad; border-radius: 17px; background: #fffbef; }
+.push-onboarding-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; background: #fff0b6; color: #5b491a; }
+.push-onboarding h2 { margin: 0; font-size: 16px; line-height: 1.25; }
+.push-onboarding p { margin-top: 4px; color: #6e6653; font-size: 13px; line-height: 1.45; }
+.push-onboarding .field-error { color: #a6382f; }
+.push-onboarding-actions { display: flex; align-items: center; gap: 10px; }
+.push-onboarding-actions .primary-button { min-height: 38px; padding: 0 14px; font-size: 13px; }
+.push-onboarding-dismiss { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: transparent; color: #7c7b73; }
+.push-onboarding-dismiss:hover { background: #f3e8cb; }
+@media (max-width: 600px) {
+  .push-onboarding { grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: 10px; margin-bottom: 16px; padding: 13px 40px 13px 13px; }
+  .push-onboarding-icon { width: 36px; height: 36px; border-radius: 11px; }
+  .push-onboarding h2 { font-size: 14px; }
+  .push-onboarding p { font-size: 12px; }
+  .push-onboarding-actions { grid-column: 2; }
+  .push-onboarding-dismiss { position: absolute; top: 10px; right: 9px; }
+}
 
 /* Compact marketplace layout and owner controls. */
 .topbar { min-height: 72px; height: auto; gap: 20px; }
